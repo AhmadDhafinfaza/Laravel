@@ -1,5 +1,4 @@
 auth laravel :
-
 1. konfigurasi database
 2. buat migration model user
 
