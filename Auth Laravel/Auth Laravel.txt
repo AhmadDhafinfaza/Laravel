@@ -1,0 +1,543 @@
+auth laravel :
+
+1. konfigurasi database
+2. buat migration model user
+
+<?php
+   
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+   
+class CreateUsersTable extends Migration
+{
+    /**
+     * Run the migrations.
+     *
+     * @return void
+     */
+    public function up()
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->bigIncrements('id');
+            $table->string('name');
+            $table->string('email');
+            $table->timestamp('email_verified_at')->nullable();
+            $table->boolean('is_admin')->nullable();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+    }
+  
+    /**
+     * Reverse the migrations.
+     *
+     * @return void
+     */
+    public function down()
+    {
+        Schema::dropIfExists('users');
+    }
+}
+
+3. buat model user
+<?php
+   
+namespace App;
+   
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+   
+class User extends Authenticatable
+{
+    use Notifiable;
+   
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected $fillable = [
+        'name', 'email', 'password', 'is_admin'
+    ];
+   
+    /**
+     * The attributes that should be hidden for arrays.
+     *
+     * @var array
+     */
+    protected $hidden = [
+        'password', 'remember_token',
+    ];
+   
+    /**
+     * The attributes that should be cast to native types.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+    ];
+}
+
+4. php artisan migrate
+5. composer require laravel/ui
+6. php artisan ui bootstrap --auth 
+7. php artisan make:middleware IsAdmin
+8. modify middleware isAdmin
+<?php
+  
+namespace App\Http\Middleware;
+  
+use Closure;
+use Illuminate\Http\Request;
+   
+class IsAdmin
+{
+    /**
+     * Handle an incoming request.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Closure  $next
+     * @return mixed
+     */
+    public function handle($request, Closure $next)
+    {
+        if(auth()->user()->is_admin == 1){
+            return $next($request);
+        }
+   
+        return redirect("home")->with("error","You don't have admin access.");
+    }
+}
+
+9. modify http/kernel
+    'bindings' => \Illuminate\Routing\Middleware\SubstituteBindings::class,
+    'is_admin' => \App\Http\Middleware\IsAdmin::class,
+
+10. buat routing
+
+Route::get('admin/home', 'HomeController@adminHome')->name('admin.home')->middleware('is_admin');
+
+11. tambahkan method adminHome() di HomeController
+
+<?php
+   
+namespace App\Http\Controllers;
+  
+use Illuminate\Http\Request;
+   
+class HomeController extends Controller
+{
+    /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
+  
+    /**
+     * Show the application dashboard.
+     *
+     * @return \Illuminate\Contracts\Support\Renderable
+     */
+    public function index()
+    {
+        return view('home');
+    }
+  
+    /**
+     * Show the application dashboard.
+     *
+     * @return \Illuminate\Contracts\Support\Renderable
+     */
+    public function adminHome()
+    {
+        return view('adminHome');
+    }
+    
+}
+
+12. modify LoginController
+
+<?php
+  
+namespace App\Http\Controllers\Auth;
+   
+use App\Http\Controllers\Controller;
+use Illuminate\Foundation\Auth\AuthenticatesUsers;
+use Illuminate\Http\Request;
+   
+class LoginController extends Controller
+{
+    /*
+    |--------------------------------------------------------------------------
+    | Login Controller
+    |--------------------------------------------------------------------------
+    |
+    | This controller handles authenticating users for the application and
+    | redirecting them to your home screen. The controller uses a trait
+    | to conveniently provide its functionality to your applications.
+    |
+    */
+  
+    use AuthenticatesUsers;
+  
+    /**
+     * Where to redirect users after login.
+     *
+     * @var string
+     */
+    protected $redirectTo = '/home';
+   
+    /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        $this->middleware('guest')->except('logout');
+    }
+   
+    public function login(Request $request)
+    {   
+        $input = $request->all();
+   
+        $this->validate($request, [
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+   
+        if(auth()->attempt(array('email' => $input['email'], 'password' => $input['password'])))
+        {
+            if (auth()->user()->is_admin == 1) {
+                return redirect()->route('admin.home');
+            }else{
+                return redirect()->route('user.home');
+            }
+        }else{
+            return redirect()->route('login')
+                ->with('error','Email-Address And Password Are Wrong.');
+        }
+          
+    }
+}
+
+13. create seeder
+
+php artisan make:seeder CreateUsersSeeder
+
+<?php
+ 
+namespace Database\Seeders;
+
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Database\Seeder;
+use App\Models\User;
+   
+class CreateUsersSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     *
+     * @return void
+     */
+    public function run()
+    {
+        $user = [
+            [
+               'name'=>'Admin',
+               'email'=>'admin@itsolutionstuff.com',
+                'is_admin'=>'1',
+               'password'=> bcrypt('123456'),
+            ],
+            [
+               'name'=>'User',
+               'email'=>'user@itsolutionstuff.com',
+                'is_admin'=>'0',
+               'password'=> bcrypt('123456'),
+            ],
+        ];
+  
+        foreach ($user as $key => $value) {
+            User::create($value);
+        }
+    }
+}
+
+14. 
+- php artisan db:seed --class=DatabaseSeeder
+- php artisan db:seed --class=CreateUsersSeeder
+
+15. tambahkan fitur login dan register di menu navbar
+
+ <li>
+                        @if (Route::has('login'))
+                            <div class="hidden fixed top-0 right-0 px-6 py-4 sm:block">
+                                @auth
+                                <li class="nav-item">
+                                <a class="nav-link" href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Logout</a>
+                                </li>
+                                
+                                
+                                @else
+                                <li class="nav-item"><a class="nav-link" href="{{ route('login') }}">Login</a></li>
+
+                                    @if (Route::has('register'))
+                                    <li class="nav-item"><a class="nav-link" href="{{ route('register') }}">Register</a></li>
+                                                @endif
+                                @endauth
+                                            </ul>
+                             
+                            </div>
+                        @endif
+                        </li>
+
+16. form untuk logout
+<form id="logout-form" action="{{ route('logout') }}" method="POST">@csrf</form>
+
+17. tombol logout di folder admin/header.blade.php dan user/header.blade.php
+
+ <li class="nav-item">
+      <a class="nav-link" href="{{ route('logout') }}" onclick="event.preventDefault();
+        document.getElementById('logout-form').submit();"><i class="fas fa-lock"></i>
+      </a>
+      </li>
+
+18. membuat halaman login
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdminLTE 3 | Log in</title>
+
+  <!-- Google Font: Source Sans Pro -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="{{ asset ('lte/plugins/fontawesome-free/css/all.min.css')}}">
+  <!-- icheck bootstrap -->
+  <link rel="stylesheet" href="{{ asset ('lte/plugins/icheck-bootstrap/icheck-bootstrap.min.css')}}">
+  <!-- Theme style -->
+  <link rel="stylesheet" href="{{ asset ('lte/dist/css/adminlte.min.css')}}">
+</head>
+<body class="hold-transition login-page">
+<div class="login-box">
+  <div class="login-logo">
+    <a href="../../index2.html"><b>Admin</b>LTE</a>
+  </div>
+  <!-- /.login-logo -->
+  <div class="card">
+    <div class="card-body login-card-body">
+      <p class="login-box-msg">Sign in to start your session</p>
+
+      <form method="POST" action="{{ route('login') }}">
+                        @csrf
+        <div class="input-group mb-3">
+        <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus>
+        @error('email')
+            <span class="invalid-feedback" role="alert">
+                <strong>{{ $message }}</strong>
+            </span>
+        @enderror
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-envelope"></span>
+            </div>
+          </div>
+        </div>
+        <div class="input-group mb-3">
+        <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
+        @error('password')
+            <span class="invalid-feedback" role="alert">
+                <strong>{{ $message }}</strong>
+            </span>
+        @enderror
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-lock"></span>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-8">
+            <div class="icheck-primary">
+              <input type="checkbox" id="remember">
+              <label for="remember">
+                Remember Me
+              </label>
+            </div>
+          </div>
+          <!-- /.col -->
+          <div class="col-4">
+            <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+          </div>
+          <!-- /.col -->
+        </div>
+    </form>
+
+      <div class="social-auth-links text-center mb-3">
+        <p>- OR -</p>
+        <a href="#" class="btn btn-block btn-primary">
+          <i class="fab fa-facebook mr-2"></i> Sign in using Facebook
+        </a>
+        <a href="#" class="btn btn-block btn-danger">
+          <i class="fab fa-google-plus mr-2"></i> Sign in using Google+
+        </a>
+      </div>
+      <!-- /.social-auth-links -->
+
+      <p class="mb-1">
+        <a href="forgot-password.html">I forgot my password</a>
+      </p>
+      <p class="mb-0">
+        <a href="register.html" class="text-center">Register a new membership</a>
+      </p>
+    </div>
+    <!-- /.login-card-body -->
+  </div>
+</div>
+<!-- /.login-box -->
+
+<!-- jQuery -->
+<script src="{{ asset ('lte/plugins/jquery/jquery.min.js')}}"></script>
+<!-- Bootstrap 4 -->
+<script src="{{ asset ('lte/plugins/bootstrap/js/bootstrap.bundle.min.js')}}"></script>
+<!-- AdminLTE App -->
+<script src="{{ asset ('lte/dist/js/adminlte.min.js')}}"></script>
+</body>
+</html>
+
+19. membuat halaman registrasi
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AdminLTE 3 | Log in</title>
+
+  <!-- Google Font: Source Sans Pro -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="{{ asset ('lte/plugins/fontawesome-free/css/all.min.css')}}">
+  <!-- icheck bootstrap -->
+  <link rel="stylesheet" href="{{ asset ('lte/plugins/icheck-bootstrap/icheck-bootstrap.min.css')}}">
+  <!-- Theme style -->
+  <link rel="stylesheet" href="{{ asset ('lte/dist/css/adminlte.min.css')}}">
+</head>
+<body class="hold-transition login-page">
+<div class="login-box">
+  <div class="login-logo">
+    <a href="../../index2.html"><b>Admin</b>LTE</a>
+  </div>
+  <!-- /.login-logo -->
+  <div class="card">
+    <div class="card-body login-card-body">
+      <p class="login-box-msg">Sign in to start your session</p>
+
+      <form method="POST" action="{{ route('register') }}">
+                        @csrf
+        <div class="input-group mb-3">
+        <input id="name" type="text" class="form-control @error('name') is-invalid @enderror" name="name" value="{{ old('name') }}" required autocomplete="name" autofocus placeholder="Nama Lengkap">
+            @error('name')
+                <span class="invalid-feedback" role="alert">
+                    <strong>{{ $message }}</strong>
+                </span>
+            @enderror
+            <div class="input-group-append">
+                <div class="input-group-text">
+                <span class="fas fa-envelope"></span>
+                </div>
+            </div>
+        </div>
+        <div class="input-group mb-3">
+        <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus placeholder="Email">
+        @error('email')
+            <span class="invalid-feedback" role="alert">
+                <strong>{{ $message }}</strong>
+            </span>
+        @enderror
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-envelope"></span>
+            </div>
+          </div>
+        </div>
+        <div class="input-group mb-3">
+        <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password" placeholder="Password">
+        @error('password')
+            <span class="invalid-feedback" role="alert">
+                <strong>{{ $message }}</strong>
+            </span>
+        @enderror
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-lock"></span>
+            </div>
+          </div>
+        </div>
+        <div class="input-group mb-3">
+        <input id="password-confirm" type="password" class="form-control" name="password_confirmation" required autocomplete="new-password" placeholder="Confirm Password">
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-lock"></span>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-8">
+            <div class="icheck-primary">
+              <input type="checkbox" id="remember">
+              <label for="remember">
+                Remember Me
+              </label>
+            </div>
+          </div>
+          <!-- /.col -->
+          <div class="col-4">
+            <button type="submit" class="btn btn-primary btn-block">Register</button>
+          </div>
+          <!-- /.col -->
+        </div>
+    </form>
+
+      <div class="social-auth-links text-center mb-3">
+        <p>- OR -</p>
+        <a href="#" class="btn btn-block btn-primary">
+          <i class="fab fa-facebook mr-2"></i> Sign in using Facebook
+        </a>
+        <a href="#" class="btn btn-block btn-danger">
+          <i class="fab fa-google-plus mr-2"></i> Sign in using Google+
+        </a>
+      </div>
+      <!-- /.social-auth-links -->
+
+      <p class="mb-1">
+        <a href="forgot-password.html">I forgot my password</a>
+      </p>
+      <p class="mb-0">
+        <a href="register.html" class="text-center">Register a new membership</a>
+      </p>
+    </div>
+    <!-- /.login-card-body -->
+  </div>
+</div>
+<!-- /.login-box -->
+
+<!-- jQuery -->
+<script src="{{ asset ('lte/plugins/jquery/jquery.min.js')}}"></script>
+<!-- Bootstrap 4 -->
+<script src="{{ asset ('lte/plugins/bootstrap/js/bootstrap.bundle.min.js')}}"></script>
+<!-- AdminLTE App -->
+<script src="{{ asset ('lte/dist/js/adminlte.min.js')}}"></script>
+</body>
+</html>
+18. php artisan serve
